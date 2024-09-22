@@ -37,7 +37,6 @@ from flask import (
     Flask,
     g,
     has_app_context,
-    has_request_context,
     jsonify,
     request,
     send_file,
@@ -63,6 +62,7 @@ from ._warnings import TaipyGuiWarning, _warn
 from .builder import _ElementApiGenerator
 from .config import Config, ConfigParameter, _Config
 from .custom import Page as CustomPage
+from .custom.utils import get_current_resource_handler, is_in_custom_page_context
 from .data.content_accessor import _ContentAccessor
 from .data.data_accessor import _DataAccessors
 from .data.data_format import _DataFormat
@@ -106,7 +106,7 @@ from .utils import (
 from .utils._adapter import _Adapter
 from .utils._bindings import _Bindings
 from .utils._evaluator import _Evaluator
-from .utils._variable_directory import _MODULE_ID, _VariableDirectory
+from .utils._variable_directory import _is_moduled_variable, _VariableDirectory
 from .utils.chart_config_builder import _build_chart_config
 from .utils.table_col_builder import _enhance_columns
 
@@ -470,7 +470,7 @@ class Gui:
 
             if callable(provider_fn):
                 try:
-                    return provider_fn(content)
+                    return provider_fn(t.cast(t.Any, content))
                 except Exception as e:
                     _warn(f"Error in content provider for type {str(type(content))}", e)
         return (
@@ -639,7 +639,7 @@ class Gui:
             self.__set_client_id_in_context(expected_client_id)
             g.ws_client_id = expected_client_id
             with self._set_locals_context(message.get("module_context") or None):
-                with self._get_autorization():
+                with self._get_authorization():
                     payload = message.get("payload", {})
                     if msg_type == _WsType.UPDATE.value:
                         self.__front_end_update(
@@ -966,7 +966,7 @@ class Gui:
     def __upload_files(self):
         self.__set_client_id_in_context()
         on_upload_action = request.form.get("on_action", None)
-        var_name = request.form.get("var_name", None)
+        var_name = t.cast(str, request.form.get("var_name", None))
         if not var_name and not on_upload_action:
             _warn("upload files: No var name")
             return ("upload files: No var name", 400)
@@ -1033,15 +1033,16 @@ class Gui:
                         setattr(self._bindings(), var_name, newvalue)
         return ("", 200)
 
-    _data_request_counter = 1
-
     def __send_var_list_update(  # noqa C901
         self,
         modified_vars: t.List[str],
         front_var: t.Optional[str] = None,
     ):
         ws_dict = {}
-        values = {v: _getscopeattr_drill(self, v) for v in modified_vars}
+        is_custom_page = is_in_custom_page_context()
+        values = {v: _getscopeattr_drill(self, v) for v in modified_vars if is_custom_page or _is_moduled_variable(v)}
+        if not values:
+            return
         for k, v in values.items():
             if isinstance(v, (_TaipyData, _TaipyContentHtml)) and v.get_name() in modified_vars:
                 modified_vars.remove(v.get_name())
@@ -1049,14 +1050,14 @@ class Gui:
                 modified_vars.remove(k)
         for _var in modified_vars:
             newvalue = values.get(_var)
-            if isinstance(newvalue, _TaipyData):
-                # A changing integer that triggers a data request
-                newvalue = Gui._data_request_counter
-                Gui._data_request_counter = (Gui._data_request_counter % 100) + 1
+            resource_handler = get_current_resource_handler()
+            custom_page_filtered_types = resource_handler.data_layer_supported_types if resource_handler else ()
+            if isinstance(newvalue, (_TaipyData)) or isinstance(newvalue, custom_page_filtered_types):
+                newvalue = {"__taipy_refresh": True}
             else:
                 if isinstance(newvalue, (_TaipyContent, _TaipyContentImage)):
                     ret_value = self.__get_content_accessor().get_info(
-                        front_var, newvalue.get(), isinstance(newvalue, _TaipyContentImage)
+                        t.cast(str, front_var), newvalue.get(), isinstance(newvalue, _TaipyContentImage)
                     )
                     if isinstance(ret_value, tuple):
                         newvalue = f"/{Gui.__CONTENT_ROOT}/{ret_value[0]}"
@@ -1072,14 +1073,9 @@ class Gui:
                     )
                 elif isinstance(newvalue, _TaipyBase):
                     newvalue = newvalue.get()
-                if isinstance(newvalue, (dict, _MapDict)):
-                    # Skip in taipy-gui, available in custom frontend
-                    resource_handler_id = None
-                    with contextlib.suppress(Exception):
-                        if has_request_context():
-                            resource_handler_id = request.cookies.get(_Server._RESOURCE_HANDLER_ARG, None)
-                    if resource_handler_id is None:
-                        continue  # this var has no transformer
+                # Skip in taipy-gui, available in custom frontend
+                if isinstance(newvalue, (dict, _MapDict)) and not is_in_custom_page_context():
+                    continue
                 if isinstance(newvalue, float) and math.isnan(newvalue):
                     # do not let NaN go through json, it is not handle well (dies silently through websocket)
                     newvalue = None
@@ -1115,6 +1111,10 @@ class Gui:
     def __request_data_update(self, var_name: str, payload: t.Any) -> None:
         # Use custom attrgetter function to allow value binding for _MapDict
         newvalue = _getscopeattr_drill(self, var_name)
+        resource_handler = get_current_resource_handler()
+        custom_page_filtered_types = resource_handler.data_layer_supported_types if resource_handler else ()
+        if not isinstance(newvalue, _TaipyData) and isinstance(newvalue, custom_page_filtered_types):
+            newvalue = _TaipyData(newvalue, "")
         if isinstance(newvalue, _TaipyData):
             ret_payload = None
             if isinstance(payload, dict):
@@ -1160,8 +1160,8 @@ class Gui:
                 page_path = Gui.__root_page_name
             # Get Module Context
             if mc := self._get_page_context(page_path):
-                page_renderer = self._get_page(page_path)._renderer
-                self._bind_custom_page_variables(page_renderer, self._get_client_id())
+                page_renderer = t.cast(_Page, self._get_page(page_path))._renderer
+                self._bind_custom_page_variables(t.cast(t.Any, page_renderer), self._get_client_id())
                 # get metadata if there is one
                 metadata: t.Dict[str, t.Any] = {}
                 if hasattr(page_renderer, "_metadata"):
@@ -1178,6 +1178,9 @@ class Gui:
     def __get_variable_tree(self, data: t.Dict[str, t.Any]):
         # Module Context -> Variable -> Variable data (name, type, initial_value)
         variable_tree: t.Dict[str, t.Dict[str, t.Dict[str, t.Any]]] = {}
+        # Types of data to be handled by the data layer and filtered out here
+        resource_handler = get_current_resource_handler()
+        filtered_value_types = resource_handler.data_layer_supported_types if resource_handler else ()
         for k, v in data.items():
             if isinstance(v, _TaipyBase):
                 data[k] = v.get()
@@ -1186,10 +1189,14 @@ class Gui:
                 var_module_name = "__main__"
             if var_module_name not in variable_tree:
                 variable_tree[var_module_name] = {}
+            data_update = isinstance(v, filtered_value_types)
+            value = None if data_update else data[k]
+            # if _is_moduled_variable(k):
             variable_tree[var_module_name][var_name] = {
                 "type": type(v).__name__,
-                "value": data[k],
+                "value": value,
                 "encoded_name": k,
+                "data_update": data_update,
             }
         return variable_tree
 
@@ -1238,12 +1245,12 @@ class Gui:
 
     def __handle_ws_get_routes(self):
         routes = (
-            [[self._config.root_page._route, self._config.root_page._renderer.page_type]]
+            [[self._config.root_page._route, t.cast(t.Any, self._config.root_page._renderer).page_type]]
             if self._config.root_page
             else []
         )
         routes += [
-            [page._route, page._renderer.page_type]
+            [page._route, t.cast(t.Any, page._renderer).page_type]
             for page in self._config.pages
             if page._route != Gui.__root_page_name
         ]
@@ -1262,7 +1269,7 @@ class Gui:
                 self._server._ws.emit(
                     "message",
                     payload,
-                    to=self.__get_ws_receiver(send_back_only),
+                    to=t.cast(str, self.__get_ws_receiver(send_back_only)),
                 )
                 time.sleep(0.001)
             except Exception as e:  # pragma: no cover
@@ -1273,7 +1280,7 @@ class Gui:
     def __broadcast_ws(self, payload: dict, client_id: t.Optional[str] = None):
         try:
             to = list(self.__get_sids(client_id)) if client_id else []
-            self._server._ws.emit("message", payload, to=to if to else None, include_self=True)
+            self._server._ws.emit("message", payload, to=t.cast(str, to) if to else None, include_self=True)
             time.sleep(0.001)
         except Exception as e:  # pragma: no cover
             _warn(f"Exception raised in WebSocket communication in '{self.__frame.f_code.co_name}'", e)
@@ -1284,7 +1291,7 @@ class Gui:
                 self._server._ws.emit(
                     "message",
                     {"type": _WsType.ACKNOWLEDGEMENT.value, "id": ack_id},
-                    to=self.__get_ws_receiver(True),
+                    to=t.cast(str, self.__get_ws_receiver(True)),
                 )
                 time.sleep(0.001)
             except Exception as e:  # pragma: no cover
@@ -1486,7 +1493,7 @@ class Gui:
 
     def __call_function_with_args(self, **kwargs):
         action_function = kwargs.get("action_function")
-        id = kwargs.get("id")
+        id = t.cast(str, kwargs.get("id"))
         payload = kwargs.get("payload")
 
         if callable(action_function):
@@ -1494,7 +1501,7 @@ class Gui:
                 argcount = action_function.__code__.co_argcount
                 if argcount > 0 and inspect.ismethod(action_function):
                     argcount -= 1
-                args = [None for _ in range(argcount)]
+                args = t.cast(list, [None for _ in range(argcount)])
                 if argcount > 0:
                     args[0] = self.__get_state()
                 if argcount > 1:
@@ -1739,7 +1746,7 @@ class Gui:
                         attributes.get("date_format"),
                         attributes.get("number_format"),
                     )
-                    _enhance_columns(attributes, hashes, col_dict, "table(cols)")
+                    _enhance_columns(attributes, hashes, t.cast(dict, col_dict), "table(cols)")
 
                     return json.dumps(col_dict, cls=_TaipyJsonEncoder)
             except Exception as e:  # pragma: no cover
@@ -1839,7 +1846,7 @@ class Gui:
 
     def _get_locals_context(self) -> str:
         current_context = self.__locals_context.get_context()
-        return current_context if current_context is not None else self.__default_module_name
+        return current_context if current_context is not None else t.cast(str, self.__default_module_name)
 
     def _set_locals_context(self, context: t.Optional[str]) -> t.ContextManager[None]:
         return self.__locals_context.set_locals_context(context)
@@ -2116,7 +2123,7 @@ class Gui:
         return encoded_var_name
 
     def _bind_var_val(self, var_name: str, value: t.Any) -> bool:
-        if _MODULE_ID not in var_name:
+        if not _is_moduled_variable(var_name):
             var_name = self.__var_dir.add_var(var_name, self._get_locals_context())
         if not hasattr(self._bindings(), var_name):
             self._bind(var_name, value)
@@ -2331,8 +2338,12 @@ class Gui:
         with self.get_flask_app().app_context() if has_app_context() else contextlib.nullcontext():  # type: ignore[attr-defined]
             self.__set_client_id_in_context(client_id)
             with self._set_locals_context(page._get_module_name()):
-                for k in self._get_locals_bind().keys():
-                    if (not page._binding_variables or k in page._binding_variables) and not k.startswith("_"):
+                for k, v in self._get_locals_bind().items():
+                    if (
+                        (not page._binding_variables or k in page._binding_variables)
+                        and not k.startswith("_")
+                        and not isinstance(v, ModuleType)
+                    ):
                         self._bind_var(k)
 
     def __render_page(self, page_name: str) -> t.Any:
@@ -2398,7 +2409,7 @@ class Gui:
             The Flask instance used.
         """
         if hasattr(self, "_server"):
-            return self._server.get_flask()
+            return t.cast(Flask, self._server.get_flask())
         raise RuntimeError("get_flask_app() cannot be invoked before run() has been called.")
 
     def _set_frame(self, frame: t.Optional[FrameType]):
@@ -2475,21 +2486,21 @@ class Gui:
                 self,
                 path_mapping=self._path_mapping,
                 flask=self._flask,
-                async_mode=app_config["async_mode"],
-                allow_upgrades=not app_config["notebook_proxy"],
+                async_mode=app_config.get("async_mode"),
+                allow_upgrades=not app_config.get("notebook_proxy"),
                 server_config=app_config.get("server_config"),
             )
 
         # Stop and reinitialize the server if it is still running as a thread
-        if (_is_in_notebook() or app_config["run_in_thread"]) and hasattr(self._server, "_thread"):
+        if (_is_in_notebook() or app_config.get("run_in_thread")) and hasattr(self._server, "_thread"):
             self.stop()
             self._flask_blueprint = []
             self._server = _Server(
                 self,
                 path_mapping=self._path_mapping,
                 flask=self._flask,
-                async_mode=app_config["async_mode"],
-                allow_upgrades=not app_config["notebook_proxy"],
+                async_mode=app_config.get("async_mode"),
+                allow_upgrades=not app_config.get("notebook_proxy"),
                 server_config=app_config.get("server_config"),
             )
             self._bindings()._new_scopes()
@@ -2498,16 +2509,16 @@ class Gui:
         app_config = self._config.config
         if hasattr(self, "_ngrok"):
             # Keep the ngrok instance if token has not changed
-            if app_config["ngrok_token"] == self._ngrok[1]:
+            if app_config.get("ngrok_token") == self._ngrok[1]:
                 _TaipyLogger._get_logger().info(f" * NGROK Public Url: {self._ngrok[0].public_url}")
                 return
             # Close the old tunnel so new tunnel can open for new token
-            ngrok.disconnect(self._ngrok[0].public_url)
-        if app_config["run_server"] and (token := app_config["ngrok_token"]):  # pragma: no cover
+            ngrok.disconnect(self._ngrok[0].public_url)  # type: ignore[reportPossiblyUnboundVariable]
+        if app_config.get("run_server") and (token := app_config.get("ngrok_token")):  # pragma: no cover
             if not util.find_spec("pyngrok"):
                 raise RuntimeError("Cannot use ngrok as pyngrok package is not installed.")
-            ngrok.set_auth_token(token)
-            self._ngrok = (ngrok.connect(app_config["port"], "http"), token)
+            ngrok.set_auth_token(token)  # type: ignore[reportPossiblyUnboundVariable]
+            self._ngrok = (ngrok.connect(app_config.get("port"), "http"), token)  # type: ignore[reportPossiblyUnboundVariable]
             _TaipyLogger._get_logger().info(f" * NGROK Public Url: {self._ngrok[0].public_url}")
 
     def __bind_default_function(self):
@@ -2600,7 +2611,7 @@ class Gui:
 
         # Register Flask Blueprint if available
         for bp in self._flask_blueprint:
-            self._server.get_flask().register_blueprint(bp)
+            t.cast(Flask, self._server.get_flask()).register_blueprint(bp)
 
     def _get_accessor(self):
         if self.__accessors is None:
@@ -2700,7 +2711,7 @@ class Gui:
 
         locals_bind = _filter_locals(self.__frame.f_locals)
 
-        self.__locals_context.set_default(locals_bind, self.__default_module_name)
+        self.__locals_context.set_default(locals_bind, t.cast(str, self.__default_module_name))
 
         self.__var_dir.set_default(self.__frame)
 
@@ -2750,25 +2761,27 @@ class Gui:
         self.__register_blueprint()
 
         # Register data accessor communication data format (JSON, Apache Arrow)
-        self._get_accessor().set_data_format(_DataFormat.APACHE_ARROW if app_config["use_arrow"] else _DataFormat.JSON)
+        self._get_accessor().set_data_format(
+            _DataFormat.APACHE_ARROW if app_config.get("use_arrow") else _DataFormat.JSON
+        )
 
         # Use multi user or not
-        self._bindings()._set_single_client(bool(app_config["single_client"]))
+        self._bindings()._set_single_client(bool(app_config.get("single_client")))
 
         # Start Flask Server
         if not run_server:
             return self.get_flask_app()
 
         return self._server.run(
-            host=app_config["host"],
-            port=app_config["port"],
-            debug=app_config["debug"],
-            use_reloader=app_config["use_reloader"],
-            flask_log=app_config["flask_log"],
-            run_in_thread=app_config["run_in_thread"],
-            allow_unsafe_werkzeug=app_config["allow_unsafe_werkzeug"],
-            notebook_proxy=app_config["notebook_proxy"],
-            port_auto_ranges=app_config["port_auto_ranges"],
+            host=app_config.get("host"),
+            port=app_config.get("port"),
+            debug=app_config.get("debug"),
+            use_reloader=app_config.get("use_reloader"),
+            flask_log=app_config.get("flask_log"),
+            run_in_thread=app_config.get("run_in_thread"),
+            allow_unsafe_werkzeug=app_config.get("allow_unsafe_werkzeug"),
+            notebook_proxy=app_config.get("notebook_proxy"),
+            port_auto_ranges=app_config.get("port_auto_ranges"),
         )
 
     def reload(self):  # pragma: no cover
@@ -2796,7 +2809,7 @@ class Gui:
             self._server.stop_thread()
             _TaipyLogger._get_logger().info("Gui server has been stopped.")
 
-    def _get_autorization(self, client_id: t.Optional[str] = None, system: t.Optional[bool] = False):
+    def _get_authorization(self, client_id: t.Optional[str] = None, system: t.Optional[bool] = False):
         return contextlib.nullcontext()
 
     def set_favicon(self, favicon_path: t.Union[str, Path], state: t.Optional[State] = None):

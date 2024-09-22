@@ -5,7 +5,7 @@ There are different ways to install Taipy, depending on how you plan to use it.
 If your goal is to look into the code, modify and improve it, go straight
 to the [source installation](#installing-for-development) section.
 
-Taipy needs your system to have Python 3.8 or above installed.
+Taipy needs your system to have Python 3.9 or above installed.
 
 ## Installing from PyPI
 
@@ -80,7 +80,7 @@ cd frontend/taipy-gui
 cd dom
 npm i
 cd ..
-npm i --omit=optional
+npm i
 npm run build
 #
 # Build the Taipy front-end bundle
