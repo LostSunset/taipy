@@ -51,7 +51,7 @@ import {
     RowValue,
     EDIT_COL,
     OnRowDeletion,
-    addDeleteColumn,
+    addActionColumn,
     headBoxSx,
     getClassName,
     LINE_STYLE,
@@ -63,6 +63,7 @@ import {
     defaultColumns,
     OnRowClick,
     DownloadAction,
+    getFormatFn,
 } from "./tableUtils";
 import {
     useClassNames,
@@ -94,6 +95,7 @@ interface RowData {
     lineStyle?: string;
     nanValue?: string;
     compRows?: RowType[];
+    useCheckbox?: boolean;
 }
 
 const Row = ({
@@ -116,6 +118,7 @@ const Row = ({
         lineStyle,
         nanValue,
         compRows,
+        useCheckbox,
     },
 }: {
     index: number;
@@ -126,7 +129,7 @@ const Row = ({
         <TableRow
             hover
             tabIndex={-1}
-            key={"row" + index}
+            key={`row${index}`}
             component="div"
             sx={style}
             className={(classes && classes.row) + " " + getClassName(rows[index], lineStyle)}
@@ -136,11 +139,12 @@ const Row = ({
         >
             {colsOrder.map((col, cIdx) => (
                 <EditableCell
-                    key={"val" + index + "-" + cIdx}
+                    key={`cell${index}${columns[col].dfid}`}
                     className={getClassName(rows[index], columns[col].style, col)}
                     tableClassName={tableClassName}
                     colDesc={columns[col]}
                     value={rows[index][col]}
+                    formattedVal={getFormatFn(rows[index], columns[col].formatFn, col)}
                     formatConfig={formatConfig}
                     rowIndex={index}
                     onValidation={!columns[col].notEditable ? onValidation : undefined}
@@ -150,6 +154,7 @@ const Row = ({
                     tableCellProps={cellProps[cIdx]}
                     tooltip={getTooltip(rows[index], columns[col].tooltip, col)}
                     comp={compRows && compRows[index] && compRows[index][col]}
+                    useCheckbox={useCheckbox}
                 />
             ))}
         </TableRow>
@@ -193,6 +198,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
         downloadable = false,
         compare = false,
         onCompare = "",
+        useCheckbox = false,
     } = props;
     const [rows, setRows] = useState<RowType[]>([]);
     const [compRows, setCompRows] = useState<RowType[]>([]);
@@ -277,7 +283,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
         e.stopPropagation();
     }, []);
 
-    const [colsOrder, columns, styles, tooltips, handleNan, filter, partialEditable] = useMemo(() => {
+    const [colsOrder, columns, styles, tooltips, formats, handleNan, filter, partialEditable] = useMemo(() => {
         let hNan = !!props.nanValue;
         if (baseColumns) {
             try {
@@ -299,7 +305,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
                         nDesc.tooltip = props.tooltip;
                     }
                 });
-                addDeleteColumn(
+                addActionColumn(
                     (active && partialEditable && (onAdd || onDelete) ? 1 : 0) +
                         (active && filter ? 1 : 0) +
                         (active && downloadable ? 1 : 0),
@@ -316,13 +322,17 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
                         pv.tooltips = pv.tooltips || {};
                         pv.tooltips[newCols[col].dfid] = newCols[col].tooltip as string;
                     }
+                    if (newCols[col].formatFn) {
+                        pv.formats = pv.formats || {};
+                        pv.formats[newCols[col].dfid] = newCols[col].formatFn;
+                    }
                     return pv;
                 }, {});
                 if (props.lineStyle) {
                     styTt.styles = styTt.styles || {};
                     styTt.styles[LINE_STYLE] = props.lineStyle;
                 }
-                return [colsOrder, newCols, styTt.styles, styTt.tooltips, hNan, filter, partialEditable];
+                return [colsOrder, newCols, styTt.styles, styTt.tooltips, styTt.formats, hNan, filter, partialEditable];
             } catch (e) {
                 console.info("ATable.columns: " + ((e as Error).message || e));
             }
@@ -330,6 +340,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
         return [
             [],
             {} as Record<string, ColumnDesc>,
+            {} as Record<string, string>,
             {} as Record<string, string>,
             {} as Record<string, string>,
             hNan,
@@ -412,6 +423,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
                         applies,
                         styles,
                         tooltips,
+                        formats,
                         handleNan,
                         afs,
                         compare ? onCompare : undefined,
@@ -427,6 +439,7 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
             aggregates,
             styles,
             tooltips,
+            formats,
             updateVarName,
             updateVars,
             orderBy,
@@ -533,32 +546,35 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
     );
 
     const rowData: RowData = useMemo(
-        () => ({
-            colsOrder: colsOrder,
-            columns: columns,
-            rows: rows,
-            classes: {},
-            tableClassName: className,
-            cellProps: colsOrder.map((col) => ({
-                sx: getCellSx(columns[col].width || columns[col].widthHint, size),
-                component: "div",
-                variant: "body",
-            })),
+        () =>
+            ({
+                colsOrder: colsOrder,
+                columns: columns,
+                rows: rows,
+                classes: {},
+                tableClassName: className,
+                cellProps: colsOrder.map((col) => ({
+                    sx: getCellSx(columns[col].width || columns[col].widthHint, size),
+                    component: "div",
+                    variant: "body",
+                })),
 
-            isItemLoaded: isItemLoaded,
-            selection: selected,
-            formatConfig: formatConfig,
-            onValidation: active && onEdit ? onCellValidation : undefined,
-            onDeletion: active && (editable || partialEditable) && onDelete ? onRowDeletion : undefined,
-            onRowSelection: active && onAction ? onRowSelection : undefined,
-            onRowClick: active && onAction ? onRowClick : undefined,
-            lineStyle: props.lineStyle,
-            nanValue: props.nanValue,
-            compRows: compRows,
-        }),
+                isItemLoaded: isItemLoaded,
+                selection: selected,
+                formatConfig: formatConfig,
+                onValidation: active && onEdit ? onCellValidation : undefined,
+                onDeletion: active && (editable || partialEditable) && onDelete ? onRowDeletion : undefined,
+                onRowSelection: active && onAction ? onRowSelection : undefined,
+                onRowClick: active && onAction ? onRowClick : undefined,
+                lineStyle: props.lineStyle,
+                nanValue: props.nanValue,
+                compRows: compRows,
+                useCheckbox: useCheckbox,
+            } as RowData),
         [
             rows,
             compRows,
+            useCheckbox,
             isItemLoaded,
             active,
             colsOrder,
@@ -591,9 +607,9 @@ const AutoLoadingTable = (props: TaipyTableProps) => {
                         <MuiTable sx={tableSx} aria-labelledby="tableTitle" size={size} stickyHeader={true}>
                             <TableHead>
                                 <TableRow ref={headerRow}>
-                                    {colsOrder.map((col, idx) => (
+                                    {colsOrder.map((col) => (
                                         <TableCell
-                                            key={col + idx}
+                                            key={`head${columns[col].dfid}`}
                                             sortDirection={orderBy === columns[col].dfid && order}
                                             sx={columns[col].width ? { width: columns[col].width } : {}}
                                         >
