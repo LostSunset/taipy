@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-import inspect
 import json
 import math
 import os
@@ -25,6 +24,7 @@ import typing as t
 import warnings
 from importlib import metadata, util
 from importlib.util import find_spec
+from inspect import currentframe, getabsfile, ismethod, ismodule, isroutine
 from pathlib import Path
 from threading import Timer
 from types import FrameType, FunctionType, LambdaType, ModuleType, SimpleNamespace
@@ -45,7 +45,7 @@ from flask import (
 from werkzeug.utils import secure_filename
 
 import __main__  # noqa: F401
-from taipy.logger._taipy_logger import _TaipyLogger
+from taipy.common.logger._taipy_logger import _TaipyLogger
 
 if util.find_spec("pyngrok"):
     from pyngrok import ngrok  # type: ignore[reportMissingImports]
@@ -81,6 +81,7 @@ from .utils import (
     _get_client_var_name,
     _get_css_var_value,
     _get_expr_var_name,
+    _get_lambda_id,
     _get_module_name_from_frame,
     _get_non_existent_file_path,
     _get_page_from_module,
@@ -143,6 +144,15 @@ class Gui:
             The signature of the *on_init* callback function must be:
 
             - *state*: the `State^` instance of the caller.
+        on_page_load (Callable): This callback is invoked just before the page content is sent
+            to the front-end.<br/>
+            It defaults to the `on_page_load()` global function defined in the Python
+            application. If there is no such function, page loads will not trigger
+            anything.<br/>
+
+            The signature of the *on_page_load* callback function must be:
+            - *state*: the `State^` instance of the caller.
+            - *page_name*: the name of the page that is being loaded.
         on_navigate (Callable): The function that is called when a page is requested.<br/>
             It defaults to the `on_navigate()` global function defined in the Python
             application. If there is no such function, page requests will not trigger
@@ -289,7 +299,7 @@ class Gui:
                 of the main Python file is allowed.
             env_filename (Optional[str]): An optional file from which to load application
                 configuration variables (see the
-                [Configuration](../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
+                [Configuration](../../../../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
                 section of the User Manual for details.)<br/>
                 The default value is "taipy.gui.env"
             libraries (Optional[List[ElementLibrary]]): An optional list of extension library
@@ -302,7 +312,7 @@ class Gui:
                 own Flask application instance and use it to serve the pages.
         """
         # store suspected local containing frame
-        self.__frame = t.cast(FrameType, t.cast(FrameType, inspect.currentframe()).f_back)
+        self.__frame = t.cast(FrameType, t.cast(FrameType, currentframe()).f_back)
         self.__default_module_name = _get_module_name_from_frame(self.__frame)
         self._set_css_file(css_file)
 
@@ -329,6 +339,7 @@ class Gui:
         self.on_action: t.Optional[t.Callable] = None
         self.on_change: t.Optional[t.Callable] = None
         self.on_init: t.Optional[t.Callable] = None
+        self.on_page_load: t.Optional[t.Callable] = None
         self.on_navigate: t.Optional[t.Callable] = None
         self.on_exception: t.Optional[t.Callable] = None
         self.on_status: t.Optional[t.Callable] = None
@@ -414,7 +425,8 @@ class Gui:
     def register_content_provider(content_type: type, content_provider: t.Callable[..., str]) -> None:
         """Add a custom content provider.
 
-        The application can use custom content for the `part` block when its *content* property is set to an object with type *type*.
+        The application can use custom content for the `part` block when its *content* property
+        is set to an object with type *type*.
 
         Arguments:
             content_type: The type of the content that triggers the content provider.
@@ -814,7 +826,7 @@ class Gui:
         if callable(on_change_fn):
             try:
                 arg_count = on_change_fn.__code__.co_argcount
-                if arg_count > 0 and inspect.ismethod(on_change_fn):
+                if arg_count > 0 and ismethod(on_change_fn):
                     arg_count -= 1
                 args: t.List[t.Any] = [None for _ in range(arg_count)]
                 if arg_count > 0:
@@ -1377,7 +1389,7 @@ class Gui:
     ):
         self.__broadcast_ws(
             {
-                "type": _WsType.UPDATE.value if message_type is None else message_type.value,
+                "type": _WsType.BROADCAST.value if message_type is None else message_type.value,
                 "name": _get_broadcast_var_name(var_name),
                 "payload": {"value": var_value},
             },
@@ -1499,7 +1511,7 @@ class Gui:
         if callable(action_function):
             try:
                 argcount = action_function.__code__.co_argcount
-                if argcount > 0 and inspect.ismethod(action_function):
+                if argcount > 0 and ismethod(action_function):
                     argcount -= 1
                 args = t.cast(list, [None for _ in range(argcount)])
                 if argcount > 0:
@@ -1522,7 +1534,7 @@ class Gui:
         cp_args = [] if args is None else args.copy()
         cp_args.insert(0, self.__get_state())
         argcount = user_function.__code__.co_argcount
-        if argcount > 0 and inspect.ismethod(user_function):
+        if argcount > 0 and ismethod(user_function):
             argcount -= 1
         if argcount > len(cp_args):
             cp_args += (argcount - len(cp_args)) * [None]
@@ -1542,8 +1554,7 @@ class Gui:
     ) -> t.Any:
         """Invoke a user callback for a given state.
 
-        See the
-        [section on Long Running Callbacks in a Thread](../../userman/gui/callbacks.md#long-running-callbacks-in-a-thread)
+        See the [section on Long Running Callbacks in a Thread](../../../../../userman/gui/callbacks.md#long-running-callbacks-in-a-thread)
         in the User Manual for details on when and how this function can be used.
 
         Arguments:
@@ -1551,7 +1562,7 @@ class Gui:
             callback (Callable[[State^, ...], None]): The user-defined function that is invoked.<br/>
                 The first parameter of this function **must** be a `State^`.
             args (Optional[Sequence]): The remaining arguments, as a List or a Tuple.
-            module_context (Optional[str]): the name of the module that will be used.
+            module_context (Optional[str]): The name of the module that will be used.
         """  # noqa: E501
         this_sid = None
         if request:
@@ -1701,33 +1712,64 @@ class Gui:
         return self.__adapter._get_adapted_lov(lov, var_type)
 
     def table_on_edit(self, state: State, var_name: str, payload: t.Dict[str, t.Any]):
-        """
-        TODO: Default implementation of on_edit for tables
+        """Default implementation of the `on_edit` callback for tables.
+
+           This function sets the value of a specific cell in the tabular dataset stored in
+           *var_name*, typically bound to the *data* property of a table control.
+
+        Arguments:
+            state: the state instance received in the callback.
+            var_name: the name of the variable bound to the table's *data* property.
+            payload: the payload dictionary received from the `on_edit` callback.<br/>
+                This dictionary has the following keys:
+
+                - *"index"*: The row index of the cell to be modified.
+                - *"col"*: Specifies the name of the column of the cell to be modified.
+                - *"value"*: Specifies the new value to be assigned to the cell.
+                - *"user_value"*: Contains the text entered by the user.
+                - *"tz"*: Specifies the timezone to be used, if applicable.
         """
         try:
             setattr(state, var_name, self._get_accessor().on_edit(getattr(state, var_name), payload))
         except Exception as e:
-            _warn("TODO: Table.on_edit", e)
-
-    def table_on_delete(self, state: State, var_name: str, payload: t.Dict[str, t.Any]):
-        """
-        TODO: Default implementation of on_delete for tables
-        """
-        try:
-            setattr(state, var_name, self._get_accessor().on_delete(getattr(state, var_name), payload))
-        except Exception as e:
-            _warn("TODO: Table.on_delete", e)
+            _warn("Gui.table_on_edit() failed potentially from a table's on_edit callback.", e)
 
     def table_on_add(
         self, state: State, var_name: str, payload: t.Dict[str, t.Any], new_row: t.Optional[t.List[t.Any]] = None
     ):
-        """
-        TODO: Default implementation of on_add for tables
+        """Default implementation of the `on_add` callback for tables.
+
+        This function creates a new row in the tabular dataset stored in *var_name*.<br/>
+        The row is added at the index specified in *payload["index"]*.
+
+        Arguments:
+            state: The state instance received from the callback.
+            var_name: The name of the variable bound to the table's *data* property.
+            payload: The payload dictionary received from the `on_add` callback.
+            new_row: The initial values for the new row.<br/>
+                If this parameter is not specified, the new row is initialized with all values set
+                to 0, with the exact meaning depending on the column data type.
         """
         try:
             setattr(state, var_name, self._get_accessor().on_add(getattr(state, var_name), payload, new_row))
         except Exception as e:
-            _warn("TODO: Table.on_add", e)
+            _warn("Gui.table_on_add() failed potentially from a table's on_add callback.", e)
+
+    def table_on_delete(self, state: State, var_name: str, payload: t.Dict[str, t.Any]):
+        """Default implementation of the `on_delete` callback for tables.
+
+        This function removes a row from the tabular dataset stored in *var_name*.<br/>
+        The row to be removed is located at the index specified in *payload["index"]*.
+
+        Arguments:
+            state: The state instance received in the callback.
+            var_name: The name of the variable bound to the table's *data* property.
+            payload: The payload dictionary received from the `on_delete` callback.
+        """
+        try:
+            setattr(state, var_name, self._get_accessor().on_delete(getattr(state, var_name), payload))
+        except Exception as e:
+            _warn("Gui.table_on_delete() failed potentially from a table's on_delete callback.", e)
 
     def _tbl_cols(
         self, rebuild: bool, rebuild_val: t.Optional[bool], attr_json: str, hash_json: str, **kwargs
@@ -1908,9 +1950,9 @@ class Gui:
                   Markdown text.
             style (Optional[str]): Additional CSS style to apply to this page.
 
-                - if there is style associated with a page, it is used at a global level
-                - if there is no style associated with the page, the style is cleared at a global level
-                - if the page is embedded in a block control, the style is ignored
+                - If there is style associated with a page, it is used at a global level
+                - If there is no style associated with the page, the style is cleared at a global level
+                - If the page is embedded in a block control, the style is ignored
 
         Note that page names cannot start with the slash ('/') character and that each
         page must have a unique name.
@@ -2032,7 +2074,7 @@ class Gui:
                 self.add_page(name=k, page=v)
         elif isinstance(folder_name := pages, str):
             if not hasattr(self, "_root_dir"):
-                self._root_dir = os.path.dirname(inspect.getabsfile(self.__frame))
+                self._root_dir = os.path.dirname(getabsfile(self.__frame))
             folder_path = folder_name if os.path.isabs(folder_name) else os.path.join(self._root_dir, folder_name)
             folder_name = os.path.basename(folder_path)
             if not os.path.isdir(folder_path):  # pragma: no cover
@@ -2052,8 +2094,8 @@ class Gui:
     ) -> Partial:
         """Create a new `Partial^`.
 
-        The [User Manual section on Partials](../../userman/gui/pages/partial/index.md) gives details on
-        when and how to use this class.
+        The [User Manual section on Partials](../../../../../userman/gui/pages/partial/index.md)
+        gives details on when and how to use this class.
 
         Arguments:
             page (Union[str, Page^]): The page to create a new Partial from.<br/>
@@ -2183,9 +2225,9 @@ class Gui:
     def _download(
         self, content: t.Any, name: t.Optional[str] = "", on_action: t.Optional[t.Union[str, t.Callable]] = ""
     ):
-        if callable(on_action) and on_action.__name__:
+        if isroutine(on_action) and on_action.__name__:
             on_action_name = (
-                _get_expr_var_name(str(on_action.__code__))
+                _get_lambda_id(t.cast(LambdaType, on_action))
                 if on_action.__name__ == "<lambda>"
                 else _get_expr_var_name(on_action.__name__)
             )
@@ -2328,6 +2370,26 @@ class Gui:
                     _warn("Exception raised in on_navigate()", e)
         return nav_page
 
+    def _call_on_page_load(self, page_name: str) -> None:
+        if page_name == Gui.__root_page_name:
+            page_name = "/"
+        on_page_load_fn = self._get_user_function("on_page_load")
+        if not callable(on_page_load_fn):
+            return
+        try:
+            arg_count = on_page_load_fn.__code__.co_argcount
+            if arg_count > 0 and ismethod(on_page_load_fn):
+                arg_count -= 1
+            args: t.List[t.Any] = [None for _ in range(arg_count)]
+            if arg_count > 0:
+                args[0] = self.__get_state()
+            if arg_count > 1:
+                args[1] = page_name
+            on_page_load_fn(*args)
+        except Exception as e:
+            if not self._call_on_exception("on_page_load", e):
+                _warn("Exception raised in on_page_load()", e)
+
     def _get_page(self, page_name: str):
         return next((page_i for page_i in self._config.pages if page_i._route == page_name), None)
 
@@ -2384,6 +2446,8 @@ class Gui:
             page._rendered_jsx += "<PageContent />"
         # Return jsx page
         if page._rendered_jsx is not None:
+            with self._set_locals_context(context):
+                self._call_on_page_load(nav_page)
             return self._server._render(
                 page._rendered_jsx, page._style if page._style is not None else "", page._head, context
             )
@@ -2411,6 +2475,9 @@ class Gui:
         if hasattr(self, "_server"):
             return t.cast(Flask, self._server.get_flask())
         raise RuntimeError("get_flask_app() cannot be invoked before run() has been called.")
+
+    def _get_port(self) -> int:
+        return self._server.get_port()
 
     def _set_frame(self, frame: t.Optional[FrameType]):
         if not isinstance(frame, FrameType):  # pragma: no cover
@@ -2528,6 +2595,7 @@ class Gui:
             self.__bind_local_func("on_init")
             self.__bind_local_func("on_change")
             self.__bind_local_func("on_action")
+            self.__bind_local_func("on_page_load")
             self.__bind_local_func("on_navigate")
             self.__bind_local_func("on_exception")
             self.__bind_local_func("on_status")
@@ -2609,6 +2677,8 @@ class Gui:
         # server URL Rule for flask rendered react-router
         pages_bp.add_url_rule(f"/{Gui.__INIT_URL}", view_func=self.__init_route)
 
+        _Hooks()._add_external_blueprint(self, __name__)
+
         # Register Flask Blueprint if available
         for bp in self._flask_blueprint:
             t.cast(Flask, self._server.get_flask()).register_blueprint(bp)
@@ -2631,7 +2701,7 @@ class Gui:
         URL that `Gui` serves. The default is to listen to the *localhost* address
         (127.0.0.1) on the port number 5000. However, the configuration of this `Gui`
         object may impact that (see the
-        [Configuration](../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
+        [Configuration](../../../../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
         section of the User Manual for details).
 
         Arguments:
@@ -2657,7 +2727,7 @@ class Gui:
                 Also note that setting the *debug* argument to True forces *async_mode* to "threading".
             **kwargs (dict[str, any]): Additional keyword arguments that configure how this `Gui` is run.
                 Please refer to the gui config section
-                [page](../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
+                [page](../../../../../userman/advanced_features/configuration/gui-config.md#configuring-the-gui-instance)
                 of the User Manual for more information.
 
         Returns:
@@ -2677,13 +2747,9 @@ class Gui:
         #
         #         The default value is None.
         # --------------------------------------------------------------------------------
-
-        # setup run function with gui hooks
-        _Hooks().run(self, **kwargs)
-
         app_config = self._config.config
 
-        run_root_dir = os.path.dirname(inspect.getabsfile(self.__frame))
+        run_root_dir = os.path.dirname(getabsfile(self.__frame))
 
         # Register _root_dir for abs path
         if not hasattr(self, "_root_dir"):
@@ -2704,6 +2770,9 @@ class Gui:
 
         self._config.resolve()
         TaipyGuiWarning.set_debug_mode(self._get_config("debug", False))
+
+        # setup run function with gui hooks
+        _Hooks().run(self, **kwargs)
 
         self.__init_server()
 
@@ -2728,7 +2797,7 @@ class Gui:
         glob_ctx: t.Dict[str, t.Any] = {t.__name__: t for t in _TaipyBase.__subclasses__()}
         glob_ctx[Gui.__SELF_VAR] = self
         glob_ctx["state"] = self.__state
-        glob_ctx.update({k: v for k, v in locals_bind.items() if inspect.ismodule(v) or callable(v)})
+        glob_ctx.update({k: v for k, v in locals_bind.items() if ismodule(v) or callable(v)})
 
         # Call on_init on each library
         for name, libs in self.__extensions.items():
@@ -2775,6 +2844,7 @@ class Gui:
         return self._server.run(
             host=app_config.get("host"),
             port=app_config.get("port"),
+            client_url=app_config.get("client_url"),
             debug=app_config.get("debug"),
             use_reloader=app_config.get("use_reloader"),
             flask_log=app_config.get("flask_log"),
@@ -2815,11 +2885,16 @@ class Gui:
     def set_favicon(self, favicon_path: t.Union[str, Path], state: t.Optional[State] = None):
         """Change the favicon for all clients.
 
-        This function dynamically changes the favicon of Taipy GUI pages for all connected client.
-        favicon_path can be an URL (relative or not) or a file path.
-        TODO The *favicon* parameter to `(Gui.)run()^` can also be used to change
-         the favicon when the application starts.
+        This function dynamically changes the favicon (the icon associated with the application's
+        pages) of Taipy GUI pages for a single or all connected clients.
+        Note that the *favicon* parameter to `(Gui.)run()^` can also be used to change
+        the favicon when the application starts.
 
+        Arguments:
+            favicon_path: The path to the image file to use.<br/>
+                This can be expressed as a path name or a URL (relative or not).
+            state: The state to apply the change to.<br/>
+                If no set or set to None, all the application's clients are impacted.
         """
         if state or self.__favicon != favicon_path:
             if not state:

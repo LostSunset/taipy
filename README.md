@@ -1,5 +1,4 @@
-
-![Hactoberfestnew](https://github.com/user-attachments/assets/149a5cee-6af1-4d4e-9c43-6fcf82a9b07e)
+[![Hacktoberfest_clickable](https://github.com/user-attachments/assets/b1b5a430-6df9-40c2-999f-de3433f61251)](https://assorted-son-815.notion.site/Hacktoberfest-2024-with-Taipy-2a5032a3f01642709e88ffaa5d0d169e)
 
 
 <div align="center">
@@ -28,13 +27,14 @@ No more compromise on performance, customization, and scalability.
 
 </div>
 
-<p align="left">
+<p align="center"><h4>
     <br />
     <a href="https://docs.taipy.io/en/latest/"><strong>📚 Explore the docs </strong></a>
     <br />
     <a href="https://discord.com/invite/SJyz2VJGxV"><strong>  🫱🏼‍🫲🏼 Discord support </strong></a>
     <br />
     <a href="https://docs.taipy.io/en/latest/gallery/"><strong> 👀 Demos & Examples </strong></a>
+</h4>
   </p>
 
 &nbsp;
@@ -71,13 +71,13 @@ Taipy is a Two-in-One Tool for UI Generation and Scenario/Data Management
 
 ## ⚙️ Quickstart
 
-To install Taipy stable release run:
+To install the Taipy stable release run:
 
 ```bash
 pip install taipy
 ```
 
-To install Taipy on a Conda Environment or from source, please refer to the [Installation Guide](https://docs.taipy.io/en/latest/installation/).<br />
+To install Taipy on a Conda Environment or from a source, please refer to the [Installation Guide](https://docs.taipy.io/en/latest/installation/).<br />
 To get started with Taipy, please refer to the [Getting Started Guide](https://docs.taipy.io/en/latest/getting_started/).
 
 &nbsp;
@@ -128,7 +128,7 @@ Check out the movie genre demo scenario creation with this [Demo](https://docs.t
 
 This simple Taipy application demonstrates how to create a basic film recommendation system using Taipy.<br />
 The application filters a dataset of films based on the user's selected genre and displays the top seven films in that genre by popularity.
-Here is the full code for both the frontend and backend of the application.
+Here is the full code for both the front-end and back-end of the application.
 
 ```python
 import taipy as tp
@@ -170,10 +170,10 @@ if __name__ == "__main__":
     # Taipy User Interface
     # Let's add a GUI to our Scenario Management for a full application
 
-    # Get list of genres
+    # Get the list of genres
     genres = [
         "Action", "Adventure", "Animation", "Children", "Comedy", "Fantasy", "IMAX"
-        "Romance","Sci-FI", "Western", "Crime", "Mystery", "Drama", "Horror", "Thriller", "Film-Noir","War", "Musical", "Documentary"
+        "Romance", "Sci-FI", "Western", "Crime", "Mystery", "Drama", "Horror", "Thriller", "Film-Noir", "War", "Musical", "Documentary"
     ]
 
     # Initialization of variables
