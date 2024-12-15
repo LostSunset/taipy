@@ -71,8 +71,7 @@ class _Factory:
     __LIBRARIES: t.Dict[str, t.List["ElementLibrary"]] = {}
 
     __CONTROL_BUILDERS = {
-        "alert":
-        lambda gui, control_type, attrs: _Builder(
+        "alert": lambda gui, control_type, attrs: _Builder(
             gui=gui,
             control_type=control_type,
             element_name="Alert",
@@ -116,9 +115,10 @@ class _Factory:
                 ("users", PropertyType.lov),
                 ("sender_id",),
                 ("height",),
-                ("page_size", PropertyType.number, 50),
-                ("max_file_size", PropertyType.number, 1 * 1024 * 1024),
+                ("page_size", PropertyType.number),
+                ("max_file_size", PropertyType.number),
                 ("show_sender", PropertyType.boolean, False),
+                ("allow_send_images", PropertyType.boolean, True),
                 ("mode",),
             ]
         ),
@@ -325,6 +325,7 @@ class _Factory:
                 ("action_keys",),
                 ("label",),
                 ("change_delay", PropertyType.number, gui._get_config("change_delay", None)),
+                ("action_on_blur", PropertyType.boolean, False),
                 ("multiline", PropertyType.boolean, False),
                 ("lines_shown", PropertyType.number, 5),
                 ("width", PropertyType.string_or_number),
@@ -433,6 +434,7 @@ class _Factory:
                 ("on_action", PropertyType.function),
                 ("label",),
                 ("change_delay", PropertyType.number, gui._get_config("change_delay", None)),
+                ("action_on_blur", PropertyType.boolean, False),
                 ("width", PropertyType.string_or_number),
             ]
         ),
@@ -504,6 +506,8 @@ class _Factory:
                 ("label",),
                 ("mode",),
                 ("lov", PropertyType.lov),
+                ("selection_message", PropertyType.dynamic_string),
+                ("show_select_all", PropertyType.boolean),
             ]
         )
         ._set_propagate(),
@@ -547,7 +551,8 @@ class _Factory:
                 ("without_close", PropertyType.boolean, False),
                 ("hover_text", PropertyType.dynamic_string),
             ]
-        ),
+        )
+        ._set_indexed_icons(),
         "table": lambda gui, control_type, attrs: _Builder(
             gui=gui,
             control_type=control_type,
