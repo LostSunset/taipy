@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -64,5 +64,11 @@ describe("Login Component", () => {
             payload: { action: "action", args: [user, user, ""] },
             type: "SEND_ACTION_ACTION",
         });
+    });
+    it("shows additional buttons", async () => {
+        const { getByText } = render(<Login labels={JSON.stringify(["Button one", "Second button"])} />);
+        const elt = getByText("Button one");
+        expect(elt).toBeInTheDocument();
+        expect(elt.tagName).toBe("BUTTON");
     });
 });

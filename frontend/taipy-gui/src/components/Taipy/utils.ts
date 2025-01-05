@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -116,14 +116,14 @@ export const noDisplayStyle = { display: "none" };
 const RE_ONLY_NUMBERS = /^\d+(\.\d*)?$/;
 export const getCssSize = (val: string | number) => {
     if (typeof val === "number") {
-        return "" + val + "px";
+        return `${val}px`;
     } else {
-        val = val.trim();
+        val = `${val}`.trim();
         if (RE_ONLY_NUMBERS.test(val)) {
-            return val + "px";
+            return `${val}px`;
         }
+        return val;
     }
-    return val;
 };
 
 /**

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -156,6 +156,58 @@ class TestCSVDataNode:
         path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
         dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": "pandas"})
         assert isinstance(dn.read(), pd.DataFrame)
+
+    def test_pandas_dataframe_exposed_type(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": pd.DataFrame})
+        assert isinstance(dn.read(), pd.DataFrame)
+
+    def test_pandas_dataframe_exposed_type_a(self):
+        import pandas
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": pandas.DataFrame})
+        assert isinstance(dn.read(), pandas.DataFrame)
+
+    def test_pandas_dataframe_exposed_type_b(self):
+        from pandas import DataFrame
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": DataFrame})
+        assert isinstance(dn.read(), DataFrame)
+
+    def test_pandas_dataframe_exposed_type_c(self):
+        from pandas import DataFrame as DF
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": DF})
+        assert isinstance(dn.read(), DF)
+
+    def test_numpy_ndarray_exposed_type(self):
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": np.ndarray})
+        assert isinstance(dn.read(), np.ndarray)
+
+    def test_numpy_ndarray_exposed_type_a(self):
+        import numpy
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": numpy.ndarray})
+        assert isinstance(dn.read(), numpy.ndarray)
+
+    def test_numpy_ndarray_exposed_type_b(self):
+        from numpy import ndarray
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": ndarray})
+        assert isinstance(dn.read(), ndarray)
+
+    def test_numpy_ndarray_exposed_type_c(self):
+        from numpy import ndarray as nd_array
+
+        path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")
+        dn = CSVDataNode("foo", Scope.SCENARIO, properties={"path": path, "exposed_type": nd_array})
+        assert isinstance(dn.read(), nd_array)
 
     def test_raise_error_invalid_exposed_type(self):
         path = os.path.join(pathlib.Path(__file__).parent.resolve(), "data_sample/example.csv")

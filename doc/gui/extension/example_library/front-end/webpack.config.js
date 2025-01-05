@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -36,8 +36,7 @@ module.exports = (_env, options) => {
     // Enable sourcemaps for debugging webpack's output.
     devtool: options.mode === "development" && "inline-source-map",
     resolve: {
-      // All the code is TypeScript
-      extensions: [".ts", ".tsx"],
+      extensions: [".ts", ".tsx", ".js"],
     },
 
     module: {

@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -97,6 +97,20 @@ class TestParquetDataNode:
         dn_1 = _DataManagerFactory._build_manager()._create_and_set(parquet_dn_config_1, None, None)
         assert isinstance(dn_1, ParquetDataNode)
         assert dn_1.properties["exposed_type"] == MyCustomObject
+
+        parquet_dn_config_2 = Config.configure_parquet_data_node(
+            id="bar", default_path=path, compression=compression, exposed_type=np.ndarray
+        )
+        dn_2 = _DataManagerFactory._build_manager()._create_and_set(parquet_dn_config_2, None, None)
+        assert isinstance(dn_2, ParquetDataNode)
+        assert dn_2.properties["exposed_type"] == np.ndarray
+
+        parquet_dn_config_3 = Config.configure_parquet_data_node(
+            id="bar", default_path=path, compression=compression, exposed_type=pd.DataFrame
+        )
+        dn_3 = _DataManagerFactory._build_manager()._create_and_set(parquet_dn_config_3, None, None)
+        assert isinstance(dn_3, ParquetDataNode)
+        assert dn_3.properties["exposed_type"] == pd.DataFrame
 
         with pytest.raises(InvalidConfigurationId):
             dn = ParquetDataNode("foo bar", Scope.SCENARIO, properties={"path": path, "name": "super name"})

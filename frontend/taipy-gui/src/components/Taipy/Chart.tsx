@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -280,8 +280,8 @@ const updateArrays = (sel: number[][], val: number[], idx: number) => {
     return sel;
 };
 
-const getDataKey = (columns: Record<string, ColumnDesc>, decimators?: string[]): [string[], string] => {
-    const backCols = Object.values(columns).map((col) => col.dfid);
+const getDataKey = (columns?: Record<string, ColumnDesc>, decimators?: string[]): [string[], string] => {
+    const backCols = columns ? Object.values(columns).map((col) => col.dfid) : [];
     return [backCols, backCols.join("-") + (decimators ? `--${decimators.join("")}` : "")];
 };
 

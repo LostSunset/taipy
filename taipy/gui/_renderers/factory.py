@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -215,6 +215,8 @@ class _Factory:
                 ("width", PropertyType.string_or_number),
                 ("height", PropertyType.string_or_number),
                 ("hover_text", PropertyType.dynamic_string),
+                ("ref_id", PropertyType.dynamic_string),
+                ("popup", PropertyType.boolean),
             ]
         )
         ._set_propagate(),
@@ -349,6 +351,7 @@ class _Factory:
             [
                 ("message", PropertyType.dynamic_string),
                 ("on_action", PropertyType.function, "on_login"),
+                ("labels", PropertyType.string_list),
             ]
         ),
         "menu": lambda gui, control_type, attrs: _Builder(
@@ -582,6 +585,7 @@ class _Factory:
                 ("size",),
                 ("downloadable", PropertyType.boolean),
                 ("use_checkbox", PropertyType.boolean),
+                ("sortable", PropertyType.boolean, True),
             ]
         )
         ._set_propagate()

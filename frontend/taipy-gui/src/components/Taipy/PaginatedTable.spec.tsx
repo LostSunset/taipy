@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Avaiga Private Limited
+ * Copyright 2021-2025 Avaiga Private Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
@@ -92,6 +92,10 @@ const tableValue = {
 };
 const tableColumns = JSON.stringify({
     Entity: { dfid: "Entity" },
+    "Daily hospital occupancy": { dfid: "Daily hospital occupancy", type: "int64" },
+});
+const tableWidthColumns = JSON.stringify({
+    Entity: { dfid: "Entity", width: "100px" },
     "Daily hospital occupancy": { dfid: "Daily hospital occupancy", type: "int64" },
 });
 const changedValue = {
@@ -216,6 +220,18 @@ describe("PaginatedTable Component", () => {
             <PaginatedTable data={undefined} defaultColumns={tableColumns} active={false} />
         );
         expect(queryByTestId("ArrowDownwardIcon")).toBeNull();
+    });
+    it("Hides sort icons when not sortable", async () => {
+        const { queryByTestId } = render(
+            <PaginatedTable data={undefined} defaultColumns={tableColumns} sortable={false} />
+        );
+        expect(queryByTestId("ArrowDownwardIcon")).toBeNull();
+    });
+    it("set width if requested", async () => {
+        const { getByText } = render(<PaginatedTable data={undefined} defaultColumns={tableWidthColumns} />);
+        const header = getByText("Entity").closest("tr");
+        expect(header?.firstChild).toHaveStyle({"min-width": "100px"});
+        expect(header?.lastChild).toHaveStyle({"width": "100%"});
     });
     it("dispatch 2 well formed messages at first render", async () => {
         const dispatch = jest.fn();

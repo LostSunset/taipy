@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -49,6 +49,9 @@ class TaskConfig(Section):
     """User function taking as inputs some parameters compatible with the data type
     (*exposed_type* field) of the input data nodes and returning results compatible with the
     data type (*exposed_type* field) of the outputs list."""
+
+    # NOTE: # {task_type: ["required_key1"]}
+    _REQUIRED_PROPERTIES: Dict[str, List[str]] = {}
 
     def __init__(
         self,

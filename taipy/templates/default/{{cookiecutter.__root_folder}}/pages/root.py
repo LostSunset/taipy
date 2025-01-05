@@ -1,4 +1,4 @@
-# Copyright 2021-2024 Avaiga Private Limited
+# Copyright 2021-2025 Avaiga Private Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 # the License. You may obtain a copy of the License at
@@ -11,11 +11,12 @@
 
 """
 The root page of the application.
-Page content is imported from the root.md file.
+Page content is built using the Page builder API.
 
-Please refer to https://docs.taipy.io/en/latest/manuals/userman/gui/pages for more details.
+Please refer to https://docs.taipy.io/en/latest/userman/gui/pages/builder/ for more details.
 """
 
-from taipy.gui import Markdown
+import taipy.gui.builder as tgb
 
-root_page = Markdown("pages/root.md")
+with tgb.Page() as root_page:
+    tgb.navbar()
