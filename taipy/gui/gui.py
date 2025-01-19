@@ -730,6 +730,8 @@ class Gui:
                         self.__handle_ws_app_id(message)
                     elif msg_type == _WsType.GET_ROUTES.value:
                         self.__handle_ws_get_routes()
+                    elif msg_type == _WsType.LOCAL_STORAGE.value:
+                        self.__handle_ws_local_storage(message)
                     else:
                         self._manage_external_message(msg_type, message)
                 self.__send_ack(message.get("ack_id"))
@@ -1368,6 +1370,31 @@ class Gui:
             send_back_only=True,
         )
 
+    def __handle_ws_local_storage(self, message: t.Any):
+        if not isinstance(message, dict):
+            return
+        payload = message.get("payload", None)
+        scope_meta_ls = self._get_data_scope_metadata()[_DataScopes._META_LOCAL_STORAGE]
+        if payload is None:
+            return
+        for key, value in payload.items():
+            if value is not None and scope_meta_ls.get(key) != value:
+                scope_meta_ls[key] = value
+
+    def _query_local_storage(self, *keys: str) -> t.Optional[t.Union[str, t.Dict[str, str]]]:
+        if not keys:
+            return None
+        if len(keys) == 1:
+            if keys[0] in self._get_data_scope_metadata()[_DataScopes._META_LOCAL_STORAGE]:
+                return self._get_data_scope_metadata()[_DataScopes._META_LOCAL_STORAGE][keys[0]]
+            return None
+        # case of multiple keys
+        ls_items = {}
+        for key in keys:
+            if key in self._get_data_scope_metadata()[_DataScopes._META_LOCAL_STORAGE]:
+                ls_items[key] = self._get_data_scope_metadata()[_DataScopes._META_LOCAL_STORAGE][key]
+        return ls_items
+
     def __send_ws(self, payload: dict, allow_grouping=True, send_back_only=False) -> None:
         grouping_message = self.__get_message_grouping() if allow_grouping else None
         if grouping_message is None:
@@ -1903,11 +1930,18 @@ class Gui:
                 rebuild = rebuild_val if rebuild_val is not None else rebuild
                 if rebuild:
                     attributes, hashes = self.__get_attributes(attr_json, hash_json, kwargs)
-                    data_hash = hashes.get("data", "")
+                    idx = 0
+                    data_hashes = []
+                    while data_hash := hashes.get("data" if idx == 0 else f"data[{idx}]", ""):
+                        data_hashes.append(data_hash)
+                        idx += 1
                     config = _build_chart_config(
                         self,
                         attributes,
-                        self._get_accessor().get_col_types(data_hash, _TaipyData(kwargs.get(data_hash), data_hash)),
+                        [
+                            self._get_accessor().get_col_types(data_hash, _TaipyData(kwargs.get(data_hash), data_hash))
+                            for data_hash in data_hashes
+                        ],
                     )
 
                     return json.dumps(config, cls=_TaipyJsonEncoder)
@@ -1941,10 +1975,11 @@ class Gui:
         return _getscopeattr(self, Gui.__UI_BLOCK_NAME, False)
 
     def __get_on_cancel_block_ui(self, callback: t.Optional[str]):
-        def _taipy_on_cancel_block_ui(guiApp, id: t.Optional[str], payload: t.Any):
-            if _hasscopeattr(guiApp, Gui.__UI_BLOCK_NAME):
-                _setscopeattr(guiApp, Gui.__UI_BLOCK_NAME, False)
-            guiApp.__on_action(id, {"action": callback})
+        def _taipy_on_cancel_block_ui(a_state: State, id: t.Optional[str], payload: t.Any):
+            gui_app = a_state.get_gui()
+            if _hasscopeattr(gui_app, Gui.__UI_BLOCK_NAME):
+                _setscopeattr(gui_app, Gui.__UI_BLOCK_NAME, False)
+            gui_app.__on_action(id, {"action": callback})
 
         return _taipy_on_cancel_block_ui
 
@@ -2087,6 +2122,7 @@ class Gui:
         new_page._route = name
         new_page._renderer = page
         new_page._style = style or page._get_style()
+        new_page._script_paths = page._get_script_paths()
         # Append page to _config
         self._config.pages.append(new_page)
         self._config.routes.append(name)
@@ -2383,15 +2419,13 @@ class Gui:
         callback: t.Optional[t.Union[str, t.Callable]] = None,
         message: t.Optional[str] = "Work in Progress...",
     ):  # pragma: no cover
-        action_name = (
-            callback
-            if isinstance(callback, str)
-            else _get_lambda_id(t.cast(LambdaType, callback))
-            if _is_unnamed_function(callback)
-            else callback.__name__
-            if callback is not None
-            else None
-        )
+        if _is_unnamed_function(callback):
+            action_name = _get_lambda_id(t.cast(LambdaType, callback))
+            self._bind_var_val(action_name, callback)
+        else:
+            action_name = (
+                callback if isinstance(callback, str) else (callback.__name__ if callback is not None else None)
+            )
         func = self.__get_on_cancel_block_ui(action_name)
         def_action_name = func.__name__
         _setscopeattr(self, def_action_name, func)
@@ -2571,7 +2605,11 @@ class Gui:
             with self._set_locals_context(context):
                 self._call_on_page_load(nav_page)
             return self._server._render(
-                page._rendered_jsx, page._style if page._style is not None else "", page._head, context
+                page._rendered_jsx,
+                page._script_paths if page._script_paths is not None else [],
+                page._style if page._style is not None else "",
+                page._head,
+                context,  # noqa: E501
             )
         else:
             return ("No page template", 404)
